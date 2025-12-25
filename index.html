@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>寻物 V6.8 Final Touch</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        /* --- 基础设置 --- */
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 3px solid #fff; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .font-serif-sc { font-family: 'Noto Serif SC', serif; }
+        
+        /* Body 背景：浅沙色 + 极细纹理 */
+        body { 
+            background-color: #D8C8B0; 
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='5.0' numOctaves='5' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+            background-blend-mode: overlay;
+            min-height: 100vh;
+        }
+
+        /* --- 3D 舞台 --- */
+        #itemList { perspective: 1200px; }
+
+        /* --- 1. 卡片外壳 --- */
+        .card-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 2/1;
+            cursor: pointer;
+            z-index: 1; 
+            transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), z-index 0s; 
+            transform-style: preserve-3d;
+            border-radius: 1rem;
+            will-change: transform;
+        }
+
+        /* 悬浮态 */
+        .card-wrapper:hover {
+            transform: translateY(-5px) scale(1.05); 
+            z-index: 100; 
+        }
+
+        /* --- 2. 旋转核心 --- */
+        .card-body {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s cubic-bezier(0.3, 1.2, 0.6, 1);
+            transform-style: preserve-3d;
+            border-radius: 1rem;
+        }
+
+        .card-body.flipped { transform: rotateX(180deg); }
+
+        /* --- 3. 正反面通用 --- */
+        .card-face {
+            position: absolute;
+            inset: 0;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* 正面 */
+        .face-front { z-index: 2; }
+
+        /* 背面 */
+        .face-back {
+            transform: rotateX(180deg);
+        }
+
+        .item-text { transition: filter 0.3s ease, transform 0.3s ease; }
+        .card-wrapper:hover .item-text { 
+            filter: brightness(0.6); 
+            transform: scale(1.02); 
+        }
+
+        /* 入场动画 */
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-enter { animation: fadeInUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+
+    </style>
+</head>
+<body class="text-gray-800 pb-24 overflow-x-hidden select-none font-[system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif]">
+
+    <div class="sticky top-0 bg-white/90 backdrop-blur-md shadow-sm z-40 transition-all duration-300 border-b border-gray-100/50">
+        <div class="w-full px-4 py-3 flex items-center gap-3">
+            <div class="relative flex-grow max-w-2xl mx-auto"> 
+                <span class="absolute left-3 top-2.5 text-gray-400 opacity-70">🔍</span>
+                <input type="text" id="searchInput" class="w-full bg-gray-100 border-none rounded-full py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300 focus:bg-white transition placeholder-gray-400" placeholder="搜索物品...">
+            </div>
+            <button onclick="openSettings()" class="bg-white/70 p-2 rounded-full text-gray-500 hover:text-stone-700 transition flex-shrink-0">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </button>
+        </div>
+    </div>
+
+    <div id="statusBar" class="hidden fixed top-[70px] left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 bg-stone-800 text-white text-xs font-bold rounded-full shadow-lg transition-all duration-300"></div>
+
+    <div class="w-[98%] mx-auto mt-4 mb-2">
+        <div id="tipBar" class="bg-black/10 backdrop-blur-sm text-stone-700/60 text-xs font-medium text-center py-2 rounded-lg tracking-widest uppercase border border-white/20 mix-blend-multiply">
+            🌿 正在统计...
+        </div>
+    </div>
+
+    <div class="w-[98%] mx-auto py-4 px-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 min-[1800px]:grid-cols-7 min-[2200px]:grid-cols-8 gap-6" id="itemList">
+        </div>
+
+    <button onclick="openAddModal()" class="fixed bottom-8 right-6 w-14 h-14 bg-[#bf6b6b] hover:bg-[#a85a5a] text-white rounded-full flex items-center justify-center text-3xl z-40 transition transform active:scale-95 border-2 border-white/30 shadow-lg">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+    </button>
+
+    <div id="lightbox" class="fixed inset-0 bg-[#1a1919]/95 z-[100] hidden flex items-center justify-center p-4 cursor-zoom-out backdrop-blur-md transition-opacity duration-300 opacity-0" onclick="closeLightbox()">
+        <img id="lightboxImg" src="" class="max-w-full max-h-screen object-contain transform transition-all duration-300 scale-95 opacity-0 select-none rounded-lg" onclick="event.stopPropagation()">
+        <button class="absolute top-6 right-6 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white/80 text-2xl transition backdrop-blur-sm" onclick="closeLightbox()">&times;</button>
+    </div>
+
+    <div id="modalOverlay" class="fixed inset-0 bg-[#1a1a1a]/80 z-50 hidden items-center justify-center p-4 backdrop-blur-md opacity-0 transition-opacity duration-200">
+        <div id="addModalContent" class="bg-white w-full max-w-md rounded-[24px] overflow-hidden hidden scale-95 transition-transform duration-200 border border-gray-100">
+            <div class="p-8">
+                <h2 class="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">📸 记下一笔</h2>
+                <div class="space-y-5">
+                    <input type="text" id="itemName" class="w-full bg-gray-50/50 border border-gray-200/60 rounded-xl p-4 text-lg outline-none focus:ring-2 focus:ring-stone-400 transition" placeholder="物品名称">
+                    <input type="text" id="itemLocation" class="w-full bg-gray-50/50 border border-gray-200/60 rounded-xl p-4 text-lg outline-none focus:ring-2 focus:ring-stone-400 transition" placeholder="位置">
+                    <input type="file" id="itemImage" accept="image/*" class="w-full text-base text-gray-500 file:mr-4 file:py-3 file:px-5 file:rounded-full file:border-0 file:bg-stone-100 file:text-stone-600 hover:file:bg-stone-200 cursor-pointer transition">
+                </div>
+                <div class="flex gap-4 mt-10">
+                    <button onclick="closeAllModals()" class="flex-1 py-4 bg-gray-100 text-gray-600 rounded-xl font-bold text-lg hover:bg-gray-200 transition">取消</button>
+                    <button id="btnSaveItem" onclick="handleSaveItem()" class="flex-1 py-4 bg-[#bf6b6b] text-white rounded-xl font-bold text-lg hover:bg-[#a85a5a] flex justify-center items-center transition shadow-md shadow-[#bf6b6b]/20">
+                        <span class="btn-text">保存</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="settingsModalContent" class="bg-white w-full max-w-md rounded-[24px] overflow-hidden hidden scale-95 transition-transform duration-200 border border-gray-100">
+            <div class="p-8">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">云端配置</h2>
+                <div class="space-y-4 mt-6">
+                    <input type="password" id="cfgImgbbKey" placeholder="ImgBB API Key" class="w-full bg-gray-50/50 border border-gray-200/60 rounded-lg p-3.5 text-base font-mono focus:ring-2 focus:ring-stone-400 transition">
+                    <input type="password" id="cfgJsonBinKey" placeholder="JSONBin Master Key" class="w-full bg-gray-50/50 border border-gray-200/60 rounded-lg p-3.5 text-base font-mono focus:ring-2 focus:ring-stone-400 transition">
+                    <input type="text" id="cfgBinId" placeholder="JSONBin Bin ID" class="w-full bg-gray-50/50 border border-gray-200/60 rounded-lg p-3.5 text-base font-mono focus:ring-2 focus:ring-stone-400 transition">
+                </div>
+                
+                <div class="mt-6 pt-6 border-t border-gray-100">
+                    <button onclick="exportData()" class="w-full py-3.5 bg-gray-100 text-gray-600 rounded-xl font-bold text-base hover:bg-gray-200 transition flex items-center justify-center gap-2">
+                        <span>📥</span> 导出数据备份 (.json)
+                    </button>
+                </div>
+
+                <div class="flex gap-4 mt-8">
+                    <button onclick="closeAllModals()" class="flex-1 py-4 bg-gray-100 text-gray-600 rounded-xl font-bold text-lg hover:bg-gray-200 transition">关闭</button>
+                    <button onclick="saveSettings()" class="flex-1 py-4 bg-[#bf6b6b] text-white rounded-xl font-bold text-lg transition hover:bg-[#a85a5a] shadow-md shadow-[#bf6b6b]/20">保存配置</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="deleteModalContent" class="bg-white w-full max-w-sm rounded-[24px] overflow-hidden hidden scale-95 transition-transform duration-200 border border-gray-100">
+            <div class="p-8 text-center">
+                <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-[#bf6b6b]/10 mb-6">
+                    <svg class="h-8 w-8 text-[#bf6b6b]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-800">确认删除？</h3>
+                <div class="flex gap-4 mt-8">
+                    <button onclick="closeAllModals()" class="flex-1 py-3.5 bg-gray-100 text-gray-600 rounded-xl font-bold text-lg hover:bg-gray-200 transition">取消</button>
+                    <button id="btnConfirmDelete" onclick="executeDelete()" class="flex-1 py-3.5 bg-[#bf6b6b] text-white rounded-xl font-bold text-lg hover:bg-[#a85a5a] transition shadow-md shadow-[#bf6b6b]/20">
+                         <span class="btn-text">删除</span>
+                         <div class="spinner hidden"></div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Logic ---
+        let items = [];
+        let itemToDeleteId = null;
+        let activeCardWrapper = null;
+        let config = {
+            imgbbKey: localStorage.getItem('cfg_imgbb') || '',
+            jsonbinKey: localStorage.getItem('cfg_jsonbin') || '',
+            binId: localStorage.getItem('cfg_binid') || ''
+        };
+        const statusBar = document.getElementById('statusBar');
+
+        const cardNoiseSVG = `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.60' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1.00'/%3E%3C/svg%3E")`;
+
+        window.onload = function() {
+            document.getElementById('cfgImgbbKey').value = config.imgbbKey;
+            document.getElementById('cfgJsonBinKey').value = config.jsonbinKey;
+            document.getElementById('cfgBinId').value = config.binId;
+            if (checkConfig()) fetchDataFromCloud();
+            else { renderItems(); if(items.length===0) setTimeout(()=>openSettings(),500); }
+        };
+
+        // 【核心修改】全局点击监听：点击空白处关闭卡片
+        document.addEventListener('click', function(e) {
+            // 如果有打开的卡片，且点击的目标不在该卡片内部（通过冒泡机制，点击卡片本身会先触发 wrapper.onclick 并 stopPropagation，所以这里触发的一定是外部点击）
+            if (activeCardWrapper) {
+                const activeBody = activeCardWrapper.querySelector('.card-body');
+                activeBody.classList.remove('flipped');
+                activeCardWrapper = null;
+            }
+        });
+
+        function renderItems(filter = '') {
+            const listEl = document.getElementById('itemList');
+            listEl.innerHTML = '';
+            const search = (filter || document.getElementById('searchInput').value).toLowerCase();
+            const filtered = items.filter(i => (i.name && i.name.toLowerCase().includes(search)) || (i.location && i.location.toLowerCase().includes(search)));
+            activeCardWrapper = null;
+
+            const tipBar = document.getElementById('tipBar');
+            if (filtered.length > 0) {
+                tipBar.innerHTML = `🌿 共 <span class="font-bold text-stone-900">${filtered.length}</span> 件物品 · 东西用完，务必归位`;
+            } else {
+                tipBar.innerHTML = `🌿 东西用完，务必归位`;
+            }
+
+            if (filtered.length === 0) {
+                listEl.className = "flex flex-col items-center justify-center min-h-[60vh] w-full";
+                listEl.innerHTML = `<div class="text-center text-white/50"><div class="text-6xl mb-4 opacity-50">📦</div><p class="text-sm font-medium">空空如也</p></div>`;
+            } else {
+                listEl.className = "w-[98%] mx-auto py-4 px-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 min-[1800px]:grid-cols-7 min-[2200px]:grid-cols-8 gap-6";
+            }
+
+            filtered.reverse().forEach((item, index) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'card-wrapper animate-enter group'; 
+                wrapper.style.animationDelay = `${index * 50}ms`;
+
+                const body = document.createElement('div');
+                body.className = 'card-body';
+
+                // 【核心修改】卡片点击逻辑：阻止冒泡，避免触发全局关闭
+                wrapper.onclick = function(e) {
+                    e.stopPropagation(); // 阻止冒泡到 document
+                    if (activeCardWrapper && activeCardWrapper !== wrapper) {
+                        const oldBody = activeCardWrapper.querySelector('.card-body');
+                        oldBody.classList.remove('flipped');
+                    }
+                    body.classList.toggle('flipped');
+                    
+                    if (body.classList.contains('flipped')) { activeCardWrapper = wrapper; } else { activeCardWrapper = null; }
+                };
+
+                const elegantColors = [
+                    ['#fcf0f0', '#e8dcdc', '#8a6a6a'], 
+                    ['#eef5f9', '#dce3e8', '#6a7f8a'], 
+                    ['#f2f7ed', '#e0e8dc', '#708a6a'], 
+                    ['#f7f6f0', '#e8e6dc', '#8a866a'], 
+                    ['#f4eff7', '#e3dce8', '#7f6a8a'], 
+                    ['#eff7f6', '#dce8e6', '#6a8a87'], 
+                    ['#f7f2ef', '#e8dfdc', '#8a756a'], 
+                    ['#f0f0f2', '#e4e4e6', '#73737a']  
+                ];
+                const [colorTop, colorBottom, textColor] = elegantColors[item.id % elegantColors.length];
+
+                let cameraIconHtml = '';
+                if (item.image) {
+                    cameraIconHtml = `
+                        <button onclick="openLightbox('${item.image}'); event.stopPropagation()" class="absolute top-3 left-3 z-20 w-8 h-8 rounded-full flex items-center justify-center bg-emerald-500 text-white shadow-sm hover:bg-emerald-600 transition-colors" title="查看大图">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        </button>
+                    `;
+                }
+
+                const deleteIconHtml = `
+                    <button onclick="openDeleteModal(${item.id}); event.stopPropagation()" class="absolute top-3 right-3 z-20 w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                    <button onclick="openDeleteModal(${item.id}); event.stopPropagation()" class="md:hidden absolute top-3 right-3 z-20 w-8 h-8 rounded-full flex items-center justify-center text-gray-300">
+                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                `;
+
+                // 正面
+                const frontFace = document.createElement('div');
+                frontFace.className = 'card-face face-front p-5';
+                frontFace.style.backgroundColor = colorBottom;
+                frontFace.style.backgroundImage = `
+                    ${cardNoiseSVG},
+                    linear-gradient(to bottom, ${colorTop} 0%, transparent 3%),
+                    linear-gradient(to top, rgba(0,0,0,0.15) 0%, transparent 3%)
+                `;
+                frontFace.style.backgroundBlendMode = 'overlay, normal, normal';
+                frontFace.style.color = textColor;
+                frontFace.innerHTML = `
+                    ${cameraIconHtml}
+                    ${deleteIconHtml}
+                    <div class="text-3xl font-black font-serif-sc tracking-tight leading-none break-all line-clamp-2 select-none opacity-90 item-text">${item.name}</div>
+                    <div class="absolute bottom-3 text-[11px] text-gray-400/80 font-medium tracking-wider select-none mix-blend-multiply">${item.date || ''}</div>
+                `;
+
+                // 背面 (【核心修改】图钉红色)
+                const backFace = document.createElement('div');
+                backFace.className = 'card-face face-back p-5';
+                backFace.style.backgroundColor = '#f0f0f0';
+                backFace.style.backgroundImage = `
+                    ${cardNoiseSVG},
+                    linear-gradient(to bottom, ${colorTop} 0%, transparent 3%),
+                    linear-gradient(to top, rgba(0,0,0,0.15) 0%, transparent 3%)
+                `;
+                backFace.style.backgroundBlendMode = 'overlay, normal, normal';
+                
+                backFace.innerHTML = `
+                    <div onclick="copyText('${item.name}', '${item.location}'); event.stopPropagation()" class="flex flex-col items-center gap-2 opacity-80 cursor-copy active:scale-95 transition-transform duration-100" title="点击复制位置">
+                        <div class="text-3xl drop-shadow-sm">📍</div>
+                        <div class="text-xl font-bold font-serif-sc text-stone-600 leading-tight text-center">${item.location}</div>
+                        <div class="text-[10px] text-stone-400 font-sans mt-1 opacity-60">点击复制口令</div>
+                    </div>
+                `;
+
+                body.appendChild(frontFace);
+                body.appendChild(backFace);
+                wrapper.appendChild(body);
+                listEl.appendChild(wrapper);
+            });
+        }
+
+        // --- Utils ---
+        function openLightbox(src) {
+            const lightbox = document.getElementById('lightbox');
+            const img = document.getElementById('lightboxImg');
+            img.src = src;
+            lightbox.classList.remove('hidden');
+            lightbox.classList.add('flex');
+            requestAnimationFrame(() => { lightbox.classList.remove('opacity-0'); img.classList.remove('scale-95', 'opacity-0'); img.classList.add('scale-100', 'opacity-100'); });
+        }
+
+        function closeLightbox() {
+            const lightbox = document.getElementById('lightbox');
+            const img = document.getElementById('lightboxImg');
+            lightbox.classList.add('opacity-0');
+            img.classList.remove('scale-100', 'opacity-100');
+            img.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => { lightbox.classList.add('hidden'); lightbox.classList.remove('flex'); img.src = ''; }, 300);
+        }
+
+        function copyText(name, location) {
+            if (!name || !location) return;
+            const text = `${name}放在${location}那里的，找找看？`;
+            navigator.clipboard.writeText(text).then(() => {
+                showStatus('📋 已复制：' + text, true);
+                setTimeout(() => showStatus('', false), 2500); 
+            }).catch(err => {
+                alert('复制失败，请手动复制');
+            });
+        }
+
+        function compressImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        const maxWidth = 1200;
+                        let width = img.width;
+                        let height = img.height;
+                        if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; }
+                        canvas.width = width; canvas.height = height;
+                        ctx.drawImage(img, 0, 0, width, height);
+                        canvas.toBlob((blob) => { resolve(blob); }, 'image/jpeg', 0.7);
+                    };
+                    img.onerror = reject;
+                };
+                reader.onerror = reject;
+            });
+        }
+
+        function exportData() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(items));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            const dateStr = new Date().toISOString().slice(0,10);
+            downloadAnchorNode.setAttribute("download", `寻物_备份_${dateStr}.json`);
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        async function fetchDataFromCloud() {
+            showStatus('☁️ 同步中...', true);
+            try {
+                const res = await fetch(`https://api.jsonbin.io/v3/b/${config.binId}/latest`, { headers: { 'X-Master-Key': config.jsonbinKey } });
+                if (!res.ok) throw new Error('Key Error');
+                const data = await res.json();
+                items = Array.isArray(data.record) ? data.record : [];
+                renderItems();
+                showStatus('✅ 同步完成', true); setTimeout(()=>showStatus('',false), 2000);
+            } catch (err) { showStatus('❌ 同步失败', true); }
+        }
+
+        async function syncDataToCloud() {
+            showStatus('☁️ 保存中...', true);
+            try {
+                await fetch(`https://api.jsonbin.io/v3/b/${config.binId}`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Master-Key': config.jsonbinKey }, body: JSON.stringify(items)
+                });
+                showStatus('✅ 保存成功', true); setTimeout(()=>showStatus('',false), 2000);
+            } catch (err) { showStatus('❌ 保存失败', true); }
+        }
+
+        async function uploadImageToImgBB(fileBlob) {
+            const formData = new FormData(); 
+            formData.append('image', fileBlob, 'compressed_image.jpg');
+            const res = await fetch(`https://api.imgbb.com/1/upload?key=${config.imgbbKey}`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!data.success) throw new Error('上传失败'); return data.data.url;
+        }
+
+        async function handleSaveItem() {
+            if (!checkConfig()) return alert('请先配置 Key');
+            const name = document.getElementById('itemName').value;
+            const loc = document.getElementById('itemLocation').value;
+            const fileInput = document.getElementById('itemImage');
+            if (!name || !loc) return alert('请填写信息');
+            setLoading('btnSaveItem', true);
+            try {
+                let imageUrl = '';
+                if (fileInput.files.length > 0) {
+                    const compressedBlob = await compressImage(fileInput.files[0]);
+                    imageUrl = await uploadImageToImgBB(compressedBlob);
+                }
+                items.push({ id: Date.now(), name, location: loc, image: imageUrl, date: new Date().toLocaleDateString() });
+                await syncDataToCloud(); renderItems(); closeAllModals();
+                document.getElementById('itemName').value = ''; document.getElementById('itemLocation').value = ''; document.getElementById('itemImage').value = '';
+            } catch (err) { alert(err.message); } finally { setLoading('btnSaveItem', false); }
+        }
+
+        function openDeleteModal(id) { itemToDeleteId = id; openModal('deleteModalContent'); }
+        async function executeDelete() {
+            if (!itemToDeleteId) return;
+            setLoading('btnConfirmDelete', true);
+            try { items = items.filter(i => i.id !== itemToDeleteId); await syncDataToCloud(); renderItems(); closeAllModals(); } 
+            catch (err) { alert('删除失败'); } finally { setLoading('btnConfirmDelete', false); itemToDeleteId = null; }
+        }
+
+        const overlay = document.getElementById('modalOverlay');
+        const modals = ['addModalContent', 'settingsModalContent', 'deleteModalContent'];
+        function openModal(cid) {
+            overlay.classList.remove('hidden', 'opacity-0'); overlay.classList.add('flex');
+            modals.forEach(id => {
+                const el = document.getElementById(id);
+                if(id===cid) el.classList.remove('hidden', 'scale-95');
+                else el.classList.add('hidden', 'scale-95');
+            });
+        }
+        function closeAllModals() {
+            overlay.classList.add('opacity-0'); modals.forEach(id=>document.getElementById(id).classList.add('scale-95'));
+            setTimeout(()=>{ overlay.classList.add('hidden'); overlay.classList.remove('flex'); modals.forEach(id=>document.getElementById(id).classList.add('hidden')); }, 200);
+        }
+        function openAddModal() { openModal('addModalContent'); }
+        function openSettings() { openModal('settingsModalContent'); }
+        overlay.addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeAllModals(); });
+        function checkConfig() { return config.imgbbKey && config.jsonbinKey && config.binId; }
+        function saveSettings() {
+            config.imgbbKey = document.getElementById('cfgImgbbKey').value.trim();
+            config.jsonbinKey = document.getElementById('cfgJsonBinKey').value.trim();
+            config.binId = document.getElementById('cfgBinId').value.trim();
+            localStorage.setItem('cfg_imgbb', config.imgbbKey);
+            localStorage.setItem('cfg_jsonbin', config.jsonbinKey);
+            localStorage.setItem('cfg_binid', config.binId);
+            closeAllModals(); location.reload();
+        }
+        function setLoading(bid, isLoading) {
+            const btn = document.getElementById(bid); if(!btn)return;
+            const txt = btn.querySelector('.btn-text'); const spin = btn.querySelector('.spinner');
+            if(isLoading) { if(txt)txt.classList.add('hidden'); if(spin)spin.classList.remove('hidden'); btn.disabled=true; btn.classList.add('opacity-70'); }
+            else { if(txt)txt.classList.remove('hidden'); if(spin)spin.classList.add('hidden'); btn.disabled=false; btn.classList.remove('opacity-70'); }
+        }
+        function showStatus(msg, show) { statusBar.innerText = msg; statusBar.classList.toggle('hidden', !show); }
+        document.getElementById('searchInput').addEventListener('input', () => renderItems());
+    </script>
+</body>
+</html>
