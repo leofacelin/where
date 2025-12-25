@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>寻物 V7.0 Mobile Refined</title>
+    <title>寻物 V7.2 Compact List</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +18,7 @@
         
         .font-serif-sc { font-family: 'Noto Serif SC', serif; }
         
-        /* Body 背景：浅沙色 + 极细纹理 */
+        /* Body 背景 */
         body { 
             background-color: #D8C8B0; 
             background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='5.0' numOctaves='5' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
@@ -33,7 +33,8 @@
         .card-wrapper {
             position: relative;
             width: 100%;
-            aspect-ratio: 2/1;
+            /* 【核心修改】移动端默认 4/1，桌面端 md 变为 2/1 */
+            aspect-ratio: 4/1;
             cursor: pointer;
             z-index: 1; 
             transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), z-index 0s; 
@@ -42,10 +43,22 @@
             will-change: transform;
         }
 
-        /* 悬浮态 */
-        .card-wrapper:hover {
-            transform: translateY(-5px) scale(1.05); 
-            z-index: 100; 
+        @media (min-width: 768px) {
+            .card-wrapper {
+                aspect-ratio: 2/1;
+            }
+        }
+
+        /* 仅桌面端启用悬浮放大 */
+        @media (hover: hover) {
+            .card-wrapper:hover {
+                transform: translateY(-5px) scale(1.05); 
+                z-index: 100; 
+            }
+            .card-wrapper:hover .item-text { 
+                filter: brightness(0.6); 
+                transform: scale(1.02); 
+            }
         }
 
         /* --- 2. 旋转核心 --- */
@@ -74,21 +87,11 @@
             overflow: hidden;
         }
 
-        /* 正面 */
         .face-front { z-index: 2; }
-
-        /* 背面 */
-        .face-back {
-            transform: rotateX(180deg);
-        }
+        .face-back { transform: rotateX(180deg); }
 
         .item-text { transition: filter 0.3s ease, transform 0.3s ease; }
-        .card-wrapper:hover .item-text { 
-            filter: brightness(0.6); 
-            transform: scale(1.02); 
-        }
 
-        /* 入场动画 */
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
         .animate-enter { animation: fadeInUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
 
@@ -116,8 +119,7 @@
         </div>
     </div>
 
-    <div class="w-[98%] mx-auto py-4 px-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 min-[1800px]:grid-cols-7 min-[2200px]:grid-cols-8 gap-6" id="itemList">
-        </div>
+    <div class="w-[98%] mx-auto py-4 px-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 min-[1800px]:grid-cols-7 min-[2200px]:grid-cols-8 gap-4 md:gap-6" id="itemList"></div>
 
     <button onclick="openAddModal()" class="fixed bottom-8 right-6 w-14 h-14 bg-[#bf6b6b] hover:bg-[#a85a5a] text-white rounded-full flex items-center justify-center text-3xl z-40 transition transform active:scale-95 border-2 border-white/30 shadow-lg">
         <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
@@ -251,7 +253,8 @@
                 listEl.className = "flex flex-col items-center justify-center min-h-[60vh] w-full";
                 listEl.innerHTML = `<div class="text-center text-white/50"><div class="text-6xl mb-4 opacity-50">📦</div><p class="text-sm font-medium">空空如也</p></div>`;
             } else {
-                listEl.className = "w-[98%] mx-auto py-4 px-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 min-[1800px]:grid-cols-7 min-[2200px]:grid-cols-8 gap-6";
+                // grid-cols-1 on mobile, gap adjusted slightly
+                listEl.className = "w-[98%] mx-auto py-4 px-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 min-[1800px]:grid-cols-7 min-[2200px]:grid-cols-8 gap-4 md:gap-6";
             }
 
             filtered.reverse().forEach((item, index) => {
@@ -298,14 +301,13 @@
                     </button>
                 `;
 
-                // 正面 (字体大小优化)
+                // 正面
                 const frontFace = document.createElement('div');
                 frontFace.className = 'card-face face-front p-5';
                 frontFace.style.backgroundColor = colorBottom;
                 frontFace.style.backgroundImage = `${cardNoiseSVG}, linear-gradient(to bottom, ${colorTop} 0%, transparent 3%), linear-gradient(to top, rgba(0,0,0,0.15) 0%, transparent 3%)`;
                 frontFace.style.backgroundBlendMode = 'overlay, normal, normal';
                 frontFace.style.color = textColor;
-                // 日期文字：text-[9px] md:text-[11px]
                 frontFace.innerHTML = `
                     ${cameraIconHtml}
                     ${deleteIconHtml}
@@ -313,18 +315,21 @@
                     <div class="absolute bottom-3 text-[9px] md:text-[11px] text-gray-400/80 font-medium tracking-wider select-none mix-blend-multiply">${item.date || ''}</div>
                 `;
 
-                // 背面 (隐藏 emoji, 字体优化)
+                // 背面 (【核心修改】移动端显示 📍 Emoji 与文字同行)
                 const backFace = document.createElement('div');
                 backFace.className = 'card-face face-back p-5';
                 backFace.style.backgroundColor = '#f0f0f0';
                 backFace.style.backgroundImage = `${cardNoiseSVG}, linear-gradient(to bottom, ${colorTop} 0%, transparent 3%), linear-gradient(to top, rgba(0,0,0,0.15) 0%, transparent 3%)`;
                 backFace.style.backgroundBlendMode = 'overlay, normal, normal';
                 
-                // 📍 Emoji 增加 hidden md:block
                 backFace.innerHTML = `
                     <div onclick="copyText('${item.name}', '${item.location}'); event.stopPropagation()" class="flex flex-col items-center gap-2 opacity-80 cursor-copy active:scale-95 transition-transform duration-100" title="点击复制位置">
                         <div class="hidden md:block text-3xl drop-shadow-sm text-red-500">📍</div>
-                        <div class="text-base md:text-xl font-bold font-serif-sc text-stone-600 leading-tight text-center">${item.location}</div>
+                        
+                        <div class="text-base md:text-xl font-bold font-serif-sc text-stone-600 leading-tight text-center">
+                            <span class="md:hidden">📍 </span>${item.location}
+                        </div>
+                        
                         <div class="text-[10px] text-stone-400 font-sans mt-1 opacity-60">点击复制口令</div>
                     </div>
                 `;
